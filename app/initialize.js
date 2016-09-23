@@ -3,19 +3,26 @@ import { Matrix, Vector } from 'sylvester';
 import { mat4 } from 'gl-matrix';
 
 const FRAGMENT_SHADER_TEXT = `
-void main(void) {
-  gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-}
+  precision mediump float;
+  varying vec4 vColour;
+
+  void main(void) {
+    gl_FragColor = vColour;
+  }
 `
 
 const VERTEX_SHADER_TEXT = `
   attribute vec3 aVertexPosition;
+  attribute vec4 aVertexColour;
 
   uniform mat4 uMVMatrix;
   uniform mat4 uPMatrix;
 
+  varying vec4 vColour;
+
   void main(void) {
     gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+    vColour = aVertexColour;
   }
 `
 
@@ -26,29 +33,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function start() {
   let shaderProgram = initShaders();
-  let squareBuffer = initSquareBuffer();
   let triangleBuffer = initTriangleBuffer();
-  clearScreen();
-  drawScene(triangleBuffer, squareBuffer, shaderProgram);
+  let triangleColourBuffer = initTriangleColourBuffer();
+
+  drawScene(triangleBuffer, triangleColourBuffer, shaderProgram);
 }
 
-function drawScene(triangleBuffer, squareBuffer, shaderProgram) {
+function drawScene(triangleBuffer, triangleColourBuffer, shaderProgram) {
+  clearScreen();
   const perspectiveMatrix = createPerspectiveMatrix();
   let modelViewMatrix = createModelViewMatrix();
 
   translate(modelViewMatrix, [-4.0, 2.0, -7.0]);
 
-  drawBuffer({ buffer: triangleBuffer,
-               shaderProgram: shaderProgram,
-               modelViewMatrix: modelViewMatrix,
-               perspectiveMatrix: perspectiveMatrix });
+  let index = shaderProgram.vertexPositionAttribute;
+  let type = gl().FLOAT;
+  let normalized = false;
+  let stride = 0;
+  let offset = 0;
+  let startingIndex = 0;
 
-  translate(modelViewMatrix, [3.0, 0.0, 0.0]);
+  gl().bindBuffer(gl().ARRAY_BUFFER, triangleBuffer);
+  gl().vertexAttribPointer(index, triangleBuffer.itemSize, type, normalized, stride, offset);
 
-  drawBuffer({ buffer: squareBuffer,
-               shaderProgram: shaderProgram,
-               modelViewMatrix: modelViewMatrix,
-               perspectiveMatrix: perspectiveMatrix });
+  gl().bindBuffer(gl().ARRAY_BUFFER, triangleColourBuffer);
+  gl().vertexAttribPointer(shaderProgram.vertexColourAttribute, triangleColourBuffer.itemSize, type, normalized, stride, offset);
+
+  setMatrixUniforms(perspectiveMatrix, modelViewMatrix, shaderProgram);
+  gl().drawArrays(gl().TRIANGLE_STRIP, startingIndex, triangleBuffer.numItems);
 }
 
 function translate(matrix, vector) {
@@ -98,26 +110,22 @@ function initTriangleBuffer() {
   return createBufferWith([
     0.0,  1.0,  0.0,
     -1.0, -1.0,  0.0,
-    1.0, -1.0,  0.0
-  ]);
+    1.0, -1.0,  0.0], 3);
 }
 
-function initSquareBuffer() {
+function initTriangleColourBuffer() {
   return createBufferWith([
-    -1.0, -1.0,  0.0,
-    -1.0,  1.0,  0.0,
-    1.0, 1.0,  0.0,
-    1.0, -1.0,  0.0,
-    -1.0, -1.0,  0.0,
-  ]);
+    1.0,  0.0,  0.0, 1.0,
+    0.0, 1.0,  0.0, 1.0,
+    0.0, 0.0,  1.0, 1.0], 4);
 }
 
-function createBufferWith(vertices) {
+function createBufferWith(vertices, vertexSize) {
   let buffer = gl().createBuffer();
   gl().bindBuffer(gl().ARRAY_BUFFER, buffer);
 
-  buffer.itemSize = 3;
-  buffer.numItems = vertices.length / 3;
+  buffer.itemSize = vertexSize;
+  buffer.numItems = vertices.length / vertexSize;
 
   gl().bufferData(gl().ARRAY_BUFFER, new Float32Array(vertices), gl().STATIC_DRAW);
   return buffer;
@@ -141,6 +149,9 @@ function initShaders() {
   let vertexPositionAttribute = gl().getAttribLocation(shaderProgram, "aVertexPosition");
   shaderProgram.vertexPositionAttribute = vertexPositionAttribute;
   gl().enableVertexAttribArray(vertexPositionAttribute);
+
+  shaderProgram.vertexColourAttribute = gl().getAttribLocation(shaderProgram, "aVertexColour");
+  gl().enableVertexAttribArray(shaderProgram.vertexColourAttribute);
 
   shaderProgram.pMatrixUniform = gl().getUniformLocation(shaderProgram, "uPMatrix");
   shaderProgram.mvMatrixUniform = gl().getUniformLocation(shaderProgram, "uMVMatrix");
